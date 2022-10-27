@@ -1,5 +1,8 @@
 #include<stdio.h>
-typedef unsigned char *byte_pointer;
+#include<assert.h>
+#include<limits.h>
+typedef unsigned char *byte_pointer;\
+typedef unsigned packed_t;
 // 2.55 - 2.57
 void show_bytes(byte_pointer start , size_t length){
     for (size_t i = 0; i < length; i++)
@@ -144,7 +147,130 @@ unsigned rotate_left(unsigned x , int n){
     return x << n | ((-1 << (w - n)) & x) >> (w - n) ;
 }
 // 2.70 Return 1 when x can be represented as an n-bit, 2's-complement
+int fits_bits(int x, int n) {
+    // 看不懂题目，抄
+    int w = sizeof(int) << 3;
+    int offset = w - n;
+    return (x << offset >> offset) == x;
+}
+// 2.71 抽取指定的字节，并拓展为一个32位的int
+int xbyte(packed_t word, int bytenum) {
+    // old version
+    // return (word >> (bytenum << 3)) & 0xff;
+    // 问题：当bytenum为负数时，位移操作失败
+    int maxnum = 3;
+    return (int) word << ((maxnum - bytenum) << 3) >> (maxnum << 3);
+}
+// 2.72 将整数val复制到缓冲区buf，只有当buf有足够空间时，才执行。
+void copy_int(int val , void* buf , int maxbytes){
+    // if (maxbytes - sizeof(val) >= 0)
+    // {
+    //     memcpy(buf,(void*) &val, sizeof(val));
+    // }
+    // 问题：sizeof的返回值类型为size_t，是个unsigned类型，maxbytes - sizeof(val) 本质上
+    // 是一个有符号与无符号的运算，最终结果会被转化为无符号，永远大于0.
+    // solution：size_t转为int
+    if (maxbytes - (int)sizeof(val) >= 0)
+    {
+        memcpy(buf,(void*)val,sizeof(val));
+    }
+    
+}
+// 2.73 Addition that saturates to Tmin or Tmax
+int saturating_add(int x,int y){
+    int sum = x + y;
+    int mask = INT_MIN;
+    // 一共会出现2种溢出情况：
+    // x正y正，sum负，此时发生正溢出
+    // x负y负，sum正，此时发生负溢出
+    int pos_over = !(x & mask) && !(y & mask) && (sum & mask) ;
+    int neg_over = (x & mask) && (y & mask) && !(sum & mask);
+    // 不能使用if分支，只能通过逻辑运算
+    (pos_over && (sum = INT_MAX) || neg_over && (sum = INT_MIN)); 
+    return sum;
+}
+// 2.74 Determine whether arguments can be subtracted without overflow (x - y 不溢出则返回1)
+int tsub_ok(int x, int y){
+    // x与y同号则不会overflow，异号时，若sub与x异号则发生overflow
+    // 异号： x ^ y & mask != 0 , 
+    int mask = INT_MIN;
+    int sub = x - y;
+    int overflow = (!!(x ^ y & mask)) && (!!(x ^ sub & mask));
+    return !overflow;
+}
+// 2.75 在w位的机器上，计算x*y的高w位
+unsigned unsigned_high_prod(unsigned x, unsigned y){
+    int sig_x = x >> 31;
+    int sig_y = y >> 31;
+    int signed_prod = signed_high_prod(x , y);
+    return signed_high_prod + x * sig_y + y * sig_x ;
+}
+int signed_high_prod(int x,int y){
+    unit64_t mul = x * y;
+    return mul >> 32;
+}
+// 2.76 实现calloc库函数，实在不知道不用if - else 怎么写了
+void *calloc(size_t nmemb, size_t size){
+    if (nmemb == 0 || size == 0)
+    {
+        return NULL;
+    }
+    size_t total = nmemb * size;
+    // 说明没溢出
+    if (nmemb == total / size)
+    {
+        void* ptr = malloc(total);
+        if (ptr != NULL)
+        {
+            memset(ptr,0,total);
+        }
+        return ptr;
+    }
+    return NULL;
+    
+}
+// 2.77 使用+ - << 运算，代替乘法
+void replce_mul(int x){
+    // K = 17
+    (x << 4) - x;
+    // K = -7
+    x - (x << 3);
+    // K = 60
+    (x << 6) - (x << 2);
+    // K = -112
+    (x << 4) - (x >> 7);
+}
+// 2.78 Divide by power of 2 
+int divide_power2(int x, int k){
+    // 判断符号，正数直接右移k位
+    // 负数 需要使用偏置位 x + ( 1 << k ) - 1
+    int is_neg = x & INT_MIN;
+    (is_neg && (x = x + (1 << k) - 1));
+    return x >> k;
+}
+// 2.79 实现函数mul3div4，计算3*x/4
+int mul3div4(int x){
+    int mul3 = (x << 1) + x;
+    int is_neg = x & INT_MIN;
+    is_neg && (x = x + (1 << 2) - 1)
+    return x >> 2;
+}
+// 2.80 计算3/4x的值，向零舍入，不允许溢出
+int threefourths(int x){
+      int is_neg = x & INT_MIN;
+  int f = x & ~0x3;
+  int l = x & 0x3;
 
+  int fd4 = f >> 2;
+  int fd4m3 = (fd4 << 1) + fd4;
+
+  int lm3 = (l << 1) + l;
+  int bias = (1 << 2) - 1;
+  (is_neg && (lm3 += bias));
+  int lm3d4 = lm3 >> 2;
+
+  return fd4m3 + lm3d4;
+}
 int main(int argc, char const *argv[])
 {
     /* code */
@@ -152,10 +278,11 @@ int main(int argc, char const *argv[])
     int x = 0xff00;
     int y = 0x6600;
     int z = mix_two_int(x , y);
+    assert(!tsub_ok(0x00, INT_MIN));
+    assert(tsub_ok(0x00, 0x00));
     // printf("%.4x", leftmost_one((unsigned) y));
-    // printf("%.8x", rotate_left(0x12345678,20));
     // printf("%c%c%c", (char)100,(char)111,(char)117);
-    printf("%d%d%d%d%d%d%d%d",(int)'s',(int)'h',(int)'a',(int)'n',(int)'g',(int)'h',(int)'a',(int)'o');
+    // printf("%d%d%d%d%d%d%d%d",(int)'s',(int)'h',(int)'a',(int)'n',(int)'g',(int)'h',(int)'a',(int)'o');
     // test_show_bytes(a);
     return 0;
 }
